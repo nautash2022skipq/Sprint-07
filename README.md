@@ -1,19 +1,20 @@
 
-# Design Problem 01
+# Design Problem 02
 
-The project is about sending the data in the body of **API Gateway** url and trigger **SNS** topic to send email when threshold is reached.
+## Problem Statement - Design & Develop
 
-The **Lambda** will get triggered when send `POST` request and will raise **CloudWatch alarm** when threshold reaches. The CloudWatch will then trigger the **SNS**.
+Consider that you are getting events in the format `[{“event1”:{“attr1”: value }}]` from different APIs.
+1.  How will you parse the event to get the value?
+2.  How will you return 10 latest events when required?
 
-The threshold will be reached when `args > 10` condition is met and sent in the body of the `POST` request.
+## Architecture Design
+![Web Health App Architecture Diagram](public/images/DesignProblem02.jpg)
 
 <br>
 
 * [Seting up the Project](#seting-up-the-project)
 
 * [AWS services used in this project](#aws-services-used-in-this-project)
-
-* [Application Architecture Diagram](#application-architecture-diagrams)
 
 * [API Gateway Endpoint Method(s)](#api-gateway-endpoint-methods)
 
@@ -79,9 +80,6 @@ This project requires follwing services to run
 - CloudFormation
 - API Gateway
 
-## Application Architecture Diagram
-![Web Health App Architecture Diagram](public/images/DesignProblem01.jpg)
-
 ## API Gateway Endpoint Methods
 In this project, we have created **REST API with AWS API Gateway** backed by **Lambda**.
 
@@ -89,8 +87,12 @@ API Gateway will generate URL which will be used to send HTTP requests at. Follo
 
 * **POST**
 
-The method is being used for sending **POST** request.
-https://api-url/prod/demo is used to send data. Data needs to be in the body in a `JSON` format
+User can send the **POST** request to any of these URLs
+>- https://some-url/prod/url-01
+>- https://some-url/prod/url-02
+>- https://some-url/prod/url-03
+
+Data needs to be in the body in a `JSON` format
 
 ```
 {
