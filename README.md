@@ -95,8 +95,48 @@ User can send the **POST** request to any of these URLs
 Data needs to be in the body in a `JSON` format
 
 ```
+# For /url-01
 {
-    "args": 10
+    "data": [
+        {
+            "arg": 14,
+            "path": "/url-01"
+        }
+    ]
+}
+
+
+# For /url-02
+{
+    "data": [
+        {
+            "arg": 29,
+            "path": "/url-02"
+        },
+        {
+            "arg": 31,
+            "path": "/url-02"
+        },
+        {
+            "arg": 48,
+            "path": "/url-02"
+        }
+    ]
+}
+
+
+# For /url-03
+{
+    "data": [
+        {
+            "arg": 67,
+            "path": "/url-03"
+        },
+        {
+            "arg": 88,
+            "path": "/url-03"
+        }
+    ]
 }
 ```
 
