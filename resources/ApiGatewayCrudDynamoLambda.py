@@ -1,8 +1,9 @@
 import os
 import json
+import time
 import boto3
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from ApiGatewayHandler import formatJSONResponse, generateAlphanumericID
 
 dynamo = boto3.resource('dynamodb', 'us-east-2')
@@ -105,5 +106,6 @@ def getListOfItems(data):
             'timestamp': timestamp,
             'type': 'record'
         })
+        time.sleep(2)
         
     return items
