@@ -16,45 +16,49 @@ class NautashAhmadStack(Stack):
         
         role = self.create_lambda_role()
         
-        fn = self.create_lambda("ApiGatewayWebHealthLambda", "./resources", "WebHealthAppLambda.lambda_handler", 
+        # Creating lambda handler to get ten latest records from dynamo
+        dynamo_get_lambda = self.create_lambda("DP02DifferentUrlsDynamoGetLambda", "./resources", "RecordsFromDynamoLambda.lambda_handler", 
             role, 2
         )
         
         # Removal policy to automatically delete stateless and stateful resources
         # https://docs.aws.amazon.com/cdk/api/v2/python/aws_cdk/RemovalPolicy.html#aws_cdk.RemovalPolicy
-        fn.apply_removal_policy(RemovalPolicy.DESTROY)
-        
-        # Creating lambda for dynamo handler
-        dynamo_lambda = self.create_lambda("ApiGatewayWebHealthDynamoLambda", "./resources", "WebHealthDynamoLambda.lambda_handler", 
-            role, 2
-        )
-        
-        # Creating DynamoDB table
-        dynamo_table = self.create_dynamodb_table('ApiGatewayWebHealthDynamoTable', 'id', 'timestamp')
-        dynamo_table.grant_full_access(dynamo_lambda)
-        
-        # Adding environment variable to Lambda
-        # https://docs.aws.amazon.com/cdk/api/v2/python/aws_cdk.aws_lambda/Function.html#aws_cdk.aws_lambda.Function.add_environment
-        dynamo_lambda.add_environment('tableName', dynamo_table.table_name)
+        dynamo_get_lambda.apply_removal_policy(RemovalPolicy.DESTROY)
             
         '''
-            Creating DynamoDB table, DynamoDB lambda handler and API Gateway for REST API endpoints for CRUD Operations
+            Creating DynamoDB table, lambda handler and API Gateway for REST API endpoints for CRUD Operations
         '''
-        # Creating lambda for GW dynamo handler
-        gw_dynamo_lambda = self.create_lambda("ApiGatewayCrudDynamoLambda", "./resources", "ApiGatewayCrudDynamoLambda.lambda_handler", 
+        # Creating lambda handler for GW to add data to dynamo by POST requests
+        gw_dynamo_lambda = self.create_lambda("DP02DifferentUrlsGWLambda", "./resources", "ApiGatewayCrudDynamoLambda.lambda_handler", 
             role, 5
         )
+        gw_dynamo_lambda.apply_removal_policy(RemovalPolicy.DESTROY)
         
-        # Creating DynamoDB table for API Gateway CRUD Operations
-        gw_dynamo_table = self.create_dynamodb_table('ApiGatewayCRUDTable', 'id')
+        partition_key = 'id'
+        sort_key = 'timestamp'
+        index_name = 'DP02TimestampGSI'
+        
+        # Creating DynamoDB table for API Gateway POST Operations
+        gw_dynamo_table = self.create_dynamodb_table('DP02DifferentApiUrlsDynamoTable', partition_key, sort_key)
         gw_dynamo_table.grant_full_access(gw_dynamo_lambda)
+        
+        # Adding GSI on dynamo table for filtering and pagination
+        # Creating a column 'type' as partition key to match all records as partition key is requird in KeyConditionExpression
+        # Docs: https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/GSI.html#GSI.ThroughputConsiderations
+        # https://docs.aws.amazon.com/cdk/api/v2/python/aws_cdk.aws_dynamodb/Table.html#aws_cdk.aws_dynamodb.Table.add_global_secondary_index
+        gw_dynamo_table.add_global_secondary_index(read_capacity=10, write_capacity=10, index_name=index_name,
+            partition_key=dynamo_.Attribute(name='type', type=dynamo_.AttributeType.STRING),
+            sort_key=dynamo_.Attribute(name=sort_key, type=dynamo_.AttributeType.NUMBER)
+        )
         
         # Adding environment variable to Lambda
         # https://docs.aws.amazon.com/cdk/api/v2/python/aws_cdk.aws_lambda/Function.html#aws_cdk.aws_lambda.Function.add_environment
         gw_dynamo_lambda.add_environment('tableName', gw_dynamo_table.table_name)
+        dynamo_get_lambda.add_environment('tableName', gw_dynamo_table.table_name)
+        dynamo_get_lambda.add_environment('indexName', index_name)
         
         # Creating API Gateway
-        gw = self.create_rest_api_gateway('TestRestApiGateway')
+        gw = self.create_rest_api_gateway('DP02DifferentUrlsApiGateway')
         
         # https://docs.aws.amazon.com/cdk/api/v1/python/aws_cdk.aws_apigateway/LambdaIntegration.html
         handler = api_gw_.LambdaIntegration(gw_dynamo_lambda)
@@ -91,13 +95,12 @@ class NautashAhmadStack(Stack):
     # Create IAM Role for Lambda
     # https://docs.aws.amazon.com/cdk/api/v2/python/aws_cdk.aws_iam/Role.html
     def create_lambda_role(self):
-        return iam_.Role(self, "ApiGatewayWebHealthAppLambdaRole",
+        return iam_.Role(self, "DP02DifferentUrlsRole",
             assumed_by=iam_.ServicePrincipal("lambda.amazonaws.com"),
             
             # https://docs.aws.amazon.com/cdk/api/v2/python/aws_cdk.aws_iam/ManagedPolicy.html#aws_cdk.aws_iam.ManagedPolicy.from_aws_managed_policy_name
             managed_policies=[
                 iam_.ManagedPolicy.from_aws_managed_policy_name("service-role/AWSLambdaBasicExecutionRole"),
-                iam_.ManagedPolicy.from_aws_managed_policy_name("CloudWatchFullAccess"),
                 iam_.ManagedPolicy.from_aws_managed_policy_name("AmazonDynamoDBFullAccess")
             ]
         )
@@ -109,13 +112,12 @@ class NautashAhmadStack(Stack):
         attr = {
             'id': id,
             'partition_key': dynamo_.Attribute(name=partition_key, type=dynamo_.AttributeType.STRING),
-            'billing_mode': dynamo_.BillingMode.PAY_PER_REQUEST,
             'removal_policy': RemovalPolicy.DESTROY,
         }
         
-        # Optionalyy adding sort key to DynamoDB
+        # Optionally adding sort key to DynamoDB
         if sort_key:
-            attr.update({'sort_key': dynamo_.Attribute(name=sort_key, type=dynamo_.AttributeType.STRING)})
+            attr.update({'sort_key': dynamo_.Attribute(name=sort_key, type=dynamo_.AttributeType.NUMBER)})
         
         # Unpacking dictionary items
         return dynamo_.Table(self,

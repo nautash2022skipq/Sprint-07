@@ -2,6 +2,7 @@ import os
 import json
 import boto3
 
+from datetime import datetime
 from ApiGatewayHandler import formatJSONResponse, generateAlphanumericID
 
 dynamo = boto3.resource('dynamodb', 'us-east-2')
@@ -17,20 +18,19 @@ def lambda_handler(event, context):
     if path == '/url-01' and httpMethod == 'POST':
         try:
             body = json.loads(event['body'])
-            url = body['url']
+            data = body['data']
             
-            # https://dynobase.dev/dynamodb-python-with-boto3/#put-item
-            data = table.put_item(
-                Item={
-                    'id': generateAlphanumericID(8),
-                    'url': url
-                }
-            )
-            print(data)
+            items = getListOfItems(data)
+                
+            # https://boto3.amazonaws.com/v1/documentation/api/latest/guide/dynamodb.html#batch-writing
+            with table.batch_writer() as writer:
+                for item in items:
+                    writer.put_item(Item=item)
+            print(items)
             
             return formatJSONResponse({
                 'statusCode': 200,
-                'body': data
+                'body': items
             })
         except Exception as e:
             print(e)
@@ -41,20 +41,19 @@ def lambda_handler(event, context):
     elif path == '/url-02' and httpMethod == 'POST':
         try:
             body = json.loads(event['body'])
-            url = body['url']
+            data = body['data']
             
-            # https://dynobase.dev/dynamodb-python-with-boto3/#put-item
-            data = table.put_item(
-                Item={
-                    'id': generateAlphanumericID(8),
-                    'url': url
-                }
-            )
-            print(data)
+            items = getListOfItems(data)
+                
+            # https://boto3.amazonaws.com/v1/documentation/api/latest/guide/dynamodb.html#batch-writing
+            with table.batch_writer() as writer:
+                for item in items:
+                    writer.put_item(Item=item)
+            print(items)
             
             return formatJSONResponse({
                 'statusCode': 200,
-                'body': data
+                'body': items
             })
         except Exception as e:
             print(e)
@@ -65,23 +64,46 @@ def lambda_handler(event, context):
     elif path == '/url-03' and httpMethod == 'POST':
         try:
             body = json.loads(event['body'])
-            url = body['url']
+            data = body['data']
             
-            # https://dynobase.dev/dynamodb-python-with-boto3/#put-item
-            data = table.put_item(
-                Item={
-                    'id': generateAlphanumericID(8),
-                    'url': url
-                }
-            )
-            print(data)
+            items = getListOfItems(data)
+                
+            # https://boto3.amazonaws.com/v1/documentation/api/latest/guide/dynamodb.html#batch-writing
+            with table.batch_writer() as writer:
+                for item in items:
+                    writer.put_item(Item=item)
+            print(items)
             
             return formatJSONResponse({
                 'statusCode': 200,
-                'body': data
+                'body': items
             })
         except Exception as e:
             print(e)
             return formatJSONResponse({
                 'statusCode': 501,
             })
+            
+            
+def getListOfItems(data):
+    items = []
+    
+    for record in data:
+        arg = record['arg']
+        p = record['path']
+        
+        # Creating timestamp in number type for dynamo
+        # Why use timestamps as numbers in dynamo: https://dynobase.dev/dynamodb-timestamp/
+        # Conversion: https://stackoverflow.com/a/7588609
+        timestamp = datetime.utcnow().strftime('%Y%m%d%H%M%S%f')
+        timestamp = int(timestamp)
+        
+        items.append({
+            'id': generateAlphanumericID(8),
+            'arg': arg,
+            'path': p,
+            'timestamp': timestamp,
+            'type': 'record'
+        })
+        
+    return items
