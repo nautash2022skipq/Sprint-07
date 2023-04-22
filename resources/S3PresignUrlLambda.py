@@ -1,82 +1,49 @@
-import os, json, urllib3, datetime
-from CloudWatch import AWSCloudWatch
-from constants import (
-    URLS,
-    NAMESPACE,
-    AVAILABILITY_METRIC,
-    LATENCY_METRIC
-)
+import os
+import json
+import boto3
+
+from ApiGatewayHandler import formatJSONResponse
+
+client = boto3.client('s3')
 
 def lambda_handler(event, context):
-    metrics = dict()
+    # https://docs.aws.amazon.com/lambda/latest/dg/services-apigateway.html
+    path = event['path']
+    httpMethod = event['httpMethod']
     
-    # Creating AWS CloudWatch object
-    cw_obj = AWSCloudWatch()
+    bucket_name = os.environ['s3bucketName']
     
-    # Getting environment variable passed from the stack to lambda construct
-    api_gw_url = os.environ['apiGatewayUrl']
-    print(api_gw_url)
+    print(f'Bucket: {bucket_name}')
+    print(f'Path: {path} ------- httpMethod: {httpMethod}')
     
-    urls = getUrlsFromDynamo(api_gw_url)
-    print(urls)
-    
-    if not urls:
-        print('Reading constant URLS')
-        urls = URLS
-    
-    for url in urls:
-        availability = getAvailability(url)
-        latency = getLactency(url)
-                
-        metrics.update({
-            url: f'availability: {availability} ---- latency: {latency}'
-        })
-        
-        # Sending metric data to CloudWatch
-        dimensions = [{'Name': 'URL', 'Value': url}]
-        cw_obj.cw_put_metric_data(NAMESPACE, AVAILABILITY_METRIC, dimensions, availability)
-        cw_obj.cw_put_metric_data(NAMESPACE, LATENCY_METRIC, dimensions, latency)
-    
-    return metrics
-
-
-def getAvailability(url):
-    http = urllib3.PoolManager()
-    res = http.request("GET", url)
-    
-    if res.status == 200:
-        return 1
-    return 0
-
-
-def getLactency(url):
-    http = urllib3.PoolManager()
-    
-    start = datetime.datetime.now()
-    res = http.request("GET", url)
-    end = datetime.datetime.now()
-    
-    diff = end - start
-    latency = round(diff.microseconds * .000001, 6)
-    
-    return latency
-
-
-def getUrlsFromDynamo(url):
-    http = urllib3.PoolManager()
-    res = http.request("GET", url)
-    
-    urls = []
-    if res.status == 200:
-        data = res.data
-        
-        # https://stackoverflow.com/questions/40059654/convert-a-bytes-array-into-json-format
-        data = data.decode('utf8').replace("'", '"')
-        data = json.loads(data)
-        
-        for record in data:
-            for k, v in record.items():
-                if k == 'url':
-                    urls.append(v)
-                    
-    return urls
+    if path == '/upload' and httpMethod == 'GET':
+        try:
+            queryStringParameters = event['queryStringParameters']
+            if not queryStringParameters:
+                raise Exception('queryStringParameters not found')
+            
+            key = queryStringParameters['file']
+            
+            # Expires in 10 mins
+            expiresIn = 10 * 60
+            
+            params = {
+                'Bucket': bucket_name,
+                'Key': key
+            }
+            
+            # https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/s3/client/generate_presigned_url.html
+            # https://docs.aws.amazon.com/AmazonS3/latest/userguide/ShareObjectPreSignedURL.html
+            url = client.generate_presigned_url(ClientMethod='put_object', Params=params, ExpiresIn=expiresIn)
+            
+            print(url)
+            
+            return formatJSONResponse({
+                'statusCode': 200,
+                'body': url
+            })
+        except Exception as e:
+            print(e)
+            return formatJSONResponse({
+                'statusCode': 501,
+            })

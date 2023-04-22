@@ -3,6 +3,10 @@ from aws_cdk import (
     aws_lambda as lambda_,
     aws_iam as iam_,
     aws_apigateway as api_gw_,
+    aws_sns_subscriptions as subscriptions_,
+    aws_sns as sns_,
+    aws_s3 as s3_,
+    aws_s3_notifications as s3n_,
     Stack,
     RemovalPolicy,
 )
@@ -15,31 +19,38 @@ class NautashAhmadStack(Stack):
         
         role = self.create_lambda_role()
         
-        fn = self.create_lambda("DP07PresignedUrlLambda", "./resources", "S3PresignUrlLambda.lambda_handler", 
+        gateway_lambda = self.create_lambda("DP07PresignedUrlLambda", "./resources", "S3PresignUrlLambda.lambda_handler", 
             role, 2
         )
         
         # Removal policy to automatically delete stateless and stateful resources
         # https://docs.aws.amazon.com/cdk/api/v2/python/aws_cdk/RemovalPolicy.html#aws_cdk.RemovalPolicy
-        fn.apply_removal_policy(RemovalPolicy.DESTROY)
-            
-        '''
-            Creating lambda handler and API Gateway for REST API endpoint for getting S3 presigned url
-        '''
-        # Creating lambda for GW dynamo handler
-        gw_dynamo_lambda = self.create_lambda("DP07ApiGatewayLambda", "./resources", "EmailNotificationLambda.lambda_handler", 
-            role, 5
-        )
+        gateway_lambda.apply_removal_policy(RemovalPolicy.DESTROY)
         
-        # Adding environment variable to Lambda
-        # https://docs.aws.amazon.com/cdk/api/v2/python/aws_cdk.aws_lambda/Function.html#aws_cdk.aws_lambda.Function.add_environment
-        gw_dynamo_lambda.add_environment('tableName', gw_dynamo_table.table_name)
+        # Creating SNS topic and subscription
+        # https://docs.aws.amazon.com/cdk/api/v2/python/aws_cdk.aws_sns/Topic.html
+        topic = sns_.Topic(self, "DP07S3FileUploadTopic")
+        
+        # https://docs.aws.amazon.com/cdk/api/v2/python/aws_cdk.aws_sns_subscriptions/EmailSubscription.html
+        topic.add_subscription(subscriptions_.EmailSubscription('nautash.ahmad.skipq@gmail.com'))
+        
+        # Importing an existing S3 bucket
+        # https://docs.aws.amazon.com/cdk/api/v2/python/aws_cdk.aws_s3/README.html#importing-existing-buckets
+        bucket = s3_.Bucket.from_bucket_attributes(self, 'DP07ImportedBucket',
+            bucket_arn='arn:aws:s3:::nautashahmaddp07fileuploadbucket'
+        )
+        bucket_name = bucket.bucket_name
+        
+        # Creating a notofication event on S3 bucket
+        # https://docs.aws.amazon.com/cdk/api/v2/python/aws_cdk.aws_s3_notifications/SnsDestination.html
+        # https://docs.aws.amazon.com/cdk/api/v2/python/aws_cdk.aws_s3/EventType.html
+        bucket.add_event_notification(s3_.EventType.OBJECT_CREATED, s3n_.SnsDestination(topic))
         
         # Creating API Gateway
         gw = self.create_rest_api_gateway('DP07ApiGateway')
         
         # https://docs.aws.amazon.com/cdk/api/v1/python/aws_cdk.aws_apigateway/LambdaIntegration.html
-        handler = api_gw_.LambdaIntegration(gw_dynamo_lambda)
+        handler = api_gw_.LambdaIntegration(gateway_lambda)
         
         resource_name = 'upload'
         
@@ -49,14 +60,9 @@ class NautashAhmadStack(Stack):
         gw_resource = gw.root.add_resource(resource_name)
         gw_resource.add_method('GET', handler, authorization_type=api_gw_.AuthorizationType.NONE, api_key_required=False)
         
-        # Constructing REST API Gateway URL
-        # https://docs.aws.amazon.com/apigateway/latest/developerguide/create-api-resources-methods.html
-        # https://docs.aws.amazon.com/cdk/api/v1/python/aws_cdk.aws_apigateway/RestApiAttributes.html#aws_cdk.aws_apigateway.RestApiAttributes.rest_api_id
-        api_gateway_url = 'https://' + gw.rest_api_id + '.execute-api.' + self.region + '.amazonaws.com/prod/' + resource_name
-        
         # Adding environment variable to lambda function
         # https://docs.aws.amazon.com/cdk/api/v1/python/aws_cdk.aws_lambda/Function.html#aws_cdk.aws_lambda.Function.add_environment
-        fn.add_environment('apiGatewayUrl', api_gateway_url)
+        gateway_lambda.add_environment('s3bucketName', bucket_name)
         
     # Create Lambda construct
     # https://docs.aws.amazon.com/cdk/api/v2/python/aws_cdk.aws_lambda/Function.html

@@ -1,7 +1,7 @@
 import json
 
 
-def formatJSONRespone(data):
+def formatJSONResponse(data):
     statusCode = data['statusCode']
     body = data['body'] or None
     
